@@ -1,24 +1,31 @@
-import mongoose from "mongoose";
-import Student from "../models/student";
+import bcrypt from "bcryptjs";
+import cookie from "cookie";
+import connectDB from "../../../db/conn";
+import Student from "../../../db/models/Student";
 
-mongoose.connect("mongodb://localhost:27017/coursePlanner");
+connectDB();
 
 export default async function handler(req, res) {
   const { rollNumber, password } = req.body;
-
-  let studentData = await Student.findOne({ rollNumber: rollNumber });
-  if (!studentData)
-    return {
-      sucess: false,
-      message: "No Student Exists with the given roll number",
-      data: null,
-    };
-  else if (studentData.password === password)
-    return {
-      success: true,
-      message: "Login Successful",
-      data: studentData,
-    };
-
-  res.status(200).json({ name: "codedamn" });
+  try {
+    const studentExists = await Student.findOne({ rollNumber });
+    if (!studentExists) throw new Error("Student doesnot exists.");
+    const isPasswordMatch = await bcrypt.compare(
+      password,
+      studentExists.password
+    );
+    if (!isPasswordMatch) throw new Error("Invalid credentials.");
+    let token = await studentExists.generateAuthToken();
+    res.setHeader(
+      "Set-Cookie",
+      cookie.serialize("jwtToken", token, {
+        expires: new Date(Date.now() + 3600),
+        httpOnly: true,
+        path: "/",
+      })
+    );
+    res.status(200).json({ success: true, message: "Login Successful" });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message });
+  }
 }
